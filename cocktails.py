@@ -141,7 +141,6 @@ class BranchBound(object):
             amortized_budget = self.max_size - sum(
                 self.min_amortized_cost[cocktail] for cocktail in partial
             )
-
             candidate_amortized_costs = sorted(
                 self.min_amortized_cost[cocktail] for cocktail in candidates
             )
