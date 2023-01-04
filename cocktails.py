@@ -175,7 +175,7 @@ class BranchBound(object):
 
             self.search(candidates - covered_candidates, partial | covered_candidates)
 
-            # if a cocktail is not part of the optimum set than then
+            # if a cocktail is not part of the optimum set then then
             # the optimum set cannot have the cocktail as a subset
             remaining = {
                 cocktail
