@@ -24,7 +24,7 @@ class BranchBound(object):
     ) -> Cocktails:
 
         if partial is None or forbidden is None:
-            # We'll only hit this conditional on the first call, so
+            # We'll only hit this condition on the first call, so
             # we set up our cocktail scoring dictionary
             partial = set()
             forbidden = set()
