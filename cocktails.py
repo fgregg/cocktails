@@ -16,9 +16,6 @@ class BranchBound(object):
         self.min_amortized_cost: dict[Cocktail, float] = {}
         self.min_cover: dict[Cocktail, int] = {}
 
-        self.counters_w = {"a": 0, "b": 0, "c": 0, None: 0}
-        self.counters = {"a": 0, "b": 0, "c": 0, None: 0}
-
     def search(
         self,
         candidates: Cocktails,
@@ -26,7 +23,7 @@ class BranchBound(object):
         forbidden: Optional[Cocktails] = None,
     ) -> Cocktails:
 
-        if partial is None:
+        if partial is None or forbidden is None:
             # We'll only hit this conditional on the first call, so
             # we set up our cocktail scoring dictionary
             partial = set()
@@ -72,44 +69,13 @@ class BranchBound(object):
             print(sorted(cocktails[k] for k in self.highest))
             print(self.highest_score)
 
-        # what cocktails could be added without going over our
-        # ingredient budget?
-        assert forbidden is not None
-
-        partial_ingredients: Ingredients
         partial_ingredients = set().union(*partial)
-        candidates = {
-            cocktail
-            for cocktail in candidates
-            if len(cocktail | partial_ingredients) <= self.max_size
-        }
-        filtered_candidates = set()
-        for cocktail in candidates:
-            extended_ingredients = cocktail | partial_ingredients
-            if len(extended_ingredients) <= self.max_size:
-                # when we branch, we need to not only remove
-                # a cocktail from the candidate set, but make
-                # it impossible that final ingredient list could
-                # be a superset of the cocktail. failing this, we
-                # could undercount the score of branch.
-                #
-                # unfortunately, this is an O(N^2) operation and
-                # make things pretty slow
-                forbidden_cover = any(
-                    forbidden_cocktail <= extended_ingredients
-                    for forbidden_cocktail in forbidden
-                )
-                if not forbidden_cover:
-                    filtered_candidates.add(cocktail)
-
-        candidates = filtered_candidates
-
         keep_exploring = self.keep_exploring(candidates, partial, partial_ingredients)
 
         if candidates and keep_exploring:
 
             # the best heuristic i've found is to pick the candidates
-            # with the smallest amortized cost
+            # with the smallest, minimum amortized cost
             best = min(candidates, key=lambda x: self.min_amortized_cost[x])
 
             new_partial_ingredients = partial_ingredients | best
@@ -119,11 +85,31 @@ class BranchBound(object):
                 if cocktail <= new_partial_ingredients
             }
 
-            self.search(
-                candidates - covered_candidates, partial | covered_candidates, forbidden
-            )
+            permitted_candidates = set()
+            for cocktail in candidates - covered_candidates:
+                extended_ingredients = cocktail | new_partial_ingredients
+                if len(extended_ingredients) <= self.max_size:
+                    # when we branch, we need to not only remove
+                    # a cocktail from the candidate set, but make
+                    # it impossible that final ingredient list could
+                    # be a superset of the cocktail. failing this, we
+                    # could undercount the score of branch.
+                    #
+                    # unfortunately, this is an O(N^2) operation.
+                    forbidden_cover = any(
+                        forbidden_cocktail <= extended_ingredients
+                        for forbidden_cocktail in forbidden
+                    )
+                    if not forbidden_cover:
+                        permitted_candidates.add(cocktail)
 
-            remaining = candidates - set([best])
+            self.search(permitted_candidates, partial | covered_candidates, forbidden)
+
+            remaining = {
+                cocktail
+                for cocktail in candidates - set([best])
+                if not (best <= (cocktail | partial_ingredients))
+            }
             forbidden = forbidden | set([best])
 
             self.search(remaining, partial, forbidden)
@@ -141,9 +127,8 @@ class BranchBound(object):
 
         bound_functions = (
             self.total_bound,
-            self.concentration_bound,
             self.singleton_bound,
-            self.amortization_bound,
+            self.concentration_bound,
         )
         for func in bound_functions:
             bound = func(candidates, partial, partial_ingredients)
@@ -222,33 +207,6 @@ class BranchBound(object):
             - n_unique_cocktails
             + min(n_unique_cocktails, ingredient_budget)
         )
-
-        return upper_increment
-
-    def amortization_bound(
-        self,
-        candidates: Cocktails,
-        partial: Cocktails,
-        partial_ingredients: Ingredients,
-    ) -> float:
-        """
-        we can see how many more cocktails we can fit into the ingredient
-        budget assuming minimum, amortized costs for all cocktails
-        """
-        amortized_budget = self.max_size - sum(
-            self.min_amortized_cost[cocktail] for cocktail in partial
-        )
-        candidate_amortized_costs = sorted(
-            self.min_amortized_cost[cocktail] for cocktail in candidates
-        )
-
-        total_cost = 0.0
-        upper_increment = 0
-        for cost in candidate_amortized_costs:
-            total_cost += cost
-            if total_cost > amortized_budget:
-                break
-            upper_increment += 1
 
         return upper_increment
 
